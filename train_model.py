@@ -1,6 +1,7 @@
 # train_model.py
-# Run this script first to train and save the model, encoder, and categories list.
-# Make sure sales_data.csv is in the same directory.
+# Retrained to predict average daily/session category quantities under given conditions (Weekday, Session, Weather, Clerk Name).
+# Aggregates sums per category (Sales Mix Group 2) across historical dates with same conditions, then averages.
+# Run this to save new model/artifacts. Uses new dataset 'FM_training_data.csv'.
 
 import pandas as pd
 import joblib
@@ -8,47 +9,38 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.ensemble import RandomForestRegressor
 
 # Load the data
-df = pd.read_csv('sales_data.csv')
+df = pd.read_csv('FM_training_data.csv')
 
-# Get unique categories (sorted for consistency)
-categories = sorted(df['Category'].unique())
+# Get unique categories from 'Sales Mix Group 2' (sorted for consistency)
+categories = sorted(df['Sales Mix Group 2'].unique())
 
-# Compute the most common weather per Date, Session, Waiter
-weather_mode = df.groupby(['Date', 'Session', 'Waiter'])['Weather'].agg(
-    lambda x: x.value_counts().idxmax() if not x.empty else None
-).reset_index(name='Weather')
+# Group by 'Weekday', 'Session', 'Weather', 'Clerk Name', 'Sales Mix Group 2' to sum 'Quantity (Sum)' across all matching dates
+qty_group = df.groupby(['Weekday', 'Session', 'Weather', 'Clerk Name', 'Sales Mix Group 2'])['Quantity (Sum)'].sum().reset_index()
 
-# Aggregate quantities: sum Quantity per Date, Session, Waiter, Category
-qty_group = df.groupby(['Date', 'Session', 'Waiter', 'Category'])['Quantity'].sum().reset_index()
+# Count number of unique 'Business Date' per group to compute average daily/session qty = sum / date_count
+date_counts = df.groupby(['Weekday', 'Session', 'Weather', 'Clerk Name'])['Business Date'].nunique().reset_index(name='date_count')
 
-# Pivot to wide format: one column per category
+# Merge and compute average
+qty_group = qty_group.merge(date_counts, on=['Weekday', 'Session', 'Weather', 'Clerk Name'])
+qty_group['Average Quantity'] = qty_group['Quantity (Sum)'] / qty_group['date_count']
+
+# Pivot averages to wide: one column per category
 pivot_qty = qty_group.pivot(
-    index=['Date', 'Session', 'Waiter'],
-    columns='Category',
-    values='Quantity'
+    index=['Weekday', 'Session', 'Weather', 'Clerk Name'],
+    columns='Sales Mix Group 2',
+    values='Average Quantity'
 ).fillna(0).reset_index()
 
-# Merge with weather_mode
-data = pivot_qty.merge(weather_mode, on=['Date', 'Session', 'Waiter'])
-
-# Get Day per Date (assuming consistent per Date)
-day_group = df[['Date', 'Day']].drop_duplicates()
-data = data.merge(day_group, on='Date')
-
 # Features and targets
-feature_cols = ['Day', 'Session', 'Weather', 'Waiter']
-X_df = data[feature_cols]
-y = data[categories]  # Targets: quantity per category
+feature_cols = ['Weekday', 'Session', 'Weather', 'Clerk Name']
+X_df = pivot_qty[feature_cols]
+y = pivot_qty[categories]  # Targets: average quantity per category
 
 # One-hot encode categorical features
 enc = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
 X = enc.fit_transform(X_df)
 
 # Train RandomForestRegressor (multi-output by default for 2D targets)
-# RandomForest is chosen as it's robust for this tabular data with categorical features,
-# handles multi-output regression well, and doesn't require scaling.
-# For "best" model, you could experiment with XGBoostRegressor or GradientBoostingRegressor,
-# but RF is a strong baseline. Use cross-validation in production to tune.
 model = RandomForestRegressor(n_estimators=100, random_state=42)
 model.fit(X, y)
 
