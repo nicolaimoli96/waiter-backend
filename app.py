@@ -11,7 +11,17 @@ import pandas as pd
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:3000", "https://waiter-frontend.netlify.app", "https://waiter-goals-black.netlify.app",  "https://waiter-company-goals.netlify.app"])
+CORS(
+    app,
+    origins=[
+        "http://localhost:3000",
+        "https://waiter-frontend.netlify.app",
+        "https://waiter-goals-black.netlify.app",
+        "https://waiter-company-goals.netlify.app"
+    ],
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"]
+)
 
 # Load the trained model, encoder, and categories
 model = joblib.load('category_model.joblib')
