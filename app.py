@@ -1,6 +1,6 @@
 # app.py
 # Flask backend with preflight-safe CORS for multiple frontends
-# Includes /api/waiters, /api/recommend-categories, /api/simulate-daily, and login example
+# Includes /api/waiters, /api/recommend-categories, /api/simulate-daily, and login for admin only
 
 from flask import Flask, request, jsonify
 import joblib
@@ -32,7 +32,7 @@ df = pd.read_csv('FM_training_data.csv')
 waiters = sorted(df['Clerk Name'].unique())
 
 # ---------------------
-# Example login endpoint
+# Login endpoint (admin only)
 # ---------------------
 @app.route('/api/auth/login', methods=['POST', 'OPTIONS'])
 def login():
@@ -43,7 +43,7 @@ def login():
     username = data.get('username')
     password = data.get('password')
 
-    # Replace this with your actual authentication logic
+    # Admin-only login
     if username == "admin" and password == "admin":
         return jsonify({"success": True})
     else:
