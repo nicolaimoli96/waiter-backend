@@ -1,9 +1,6 @@
 # app.py
-# Updated Flask app with the new endpoint for category recommendations.
-# Maps frontend 'Lunch'/'Dinner' to 'Before5pm'/'After5pm'.
-# Uses new feature names (Weekday for Day, Clerk Name for Waiter).
-# Adds /api/waiters to fetch unique Clerk Names from FM_training_data.csv.
-# Run this after training the model.
+# Flask backend with preflight-safe CORS for multiple frontends
+# Includes /api/waiters, /api/recommend-categories, /api/simulate-daily, and login example
 
 from flask import Flask, request, jsonify
 import joblib
@@ -11,6 +8,8 @@ import pandas as pd
 from flask_cors import CORS
 
 app = Flask(__name__)
+
+# CORS configuration: allow your frontends, common methods, and headers
 CORS(
     app,
     origins=[
@@ -32,14 +31,40 @@ categories = joblib.load('categories.pkl')
 df = pd.read_csv('FM_training_data.csv')
 waiters = sorted(df['Clerk Name'].unique())
 
-# New endpoint to get waiter names
-@app.route('/api/waiters', methods=['GET'])
+# ---------------------
+# Example login endpoint
+# ---------------------
+@app.route('/api/auth/login', methods=['POST', 'OPTIONS'])
+def login():
+    if request.method == 'OPTIONS':
+        return '', 200  # Respond OK to preflight
+
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    # Replace this with your actual authentication logic
+    if username == "admin" and password == "admin":
+        return jsonify({"success": True})
+    else:
+        return jsonify({"success": False}), 401
+
+# ---------------------
+# Get waiter names
+# ---------------------
+@app.route('/api/waiters', methods=['GET', 'OPTIONS'])
 def get_waiters():
+    if request.method == 'OPTIONS':
+        return '', 200
     return jsonify({'waiters': waiters})
 
-# Original endpoint (kept for reference; modify or remove as needed)
-@app.route('/api/simulate-daily', methods=['POST'])
+# ---------------------
+# Simulate daily
+# ---------------------
+@app.route('/api/simulate-daily', methods=['POST', 'OPTIONS'])
 def simulate_daily():
+    if request.method == 'OPTIONS':
+        return '', 200
     try:
         data = request.get_json()
         day_of_week = data.get('day_of_week')
@@ -51,7 +76,7 @@ def simulate_daily():
         if not all([day_of_week is not None, weather in ['rain', 'cloud', 'wind', 'sunny'], daily_target > 0]):
             return jsonify({'error': 'Invalid input'}), 400
 
-        # Create feature DataFrame
+        # Feature DataFrame
         current_features = pd.DataFrame({
             'day_of_week': [day_of_week],
             'weather_rain': [1 if weather == 'rain' else 0],
@@ -60,34 +85,35 @@ def simulate_daily():
             'weather_sunny': [1 if weather == 'sunny' else 0]
         })
 
-        # Note: The rest of this function is unchanged from your provided code.
-        # I've omitted it here for brevity, but include the full body in your file.
-        # ...
+        # Add your existing logic here...
+        # For now, return dummy response
+        return jsonify({'message': 'Simulation processed'})
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# New endpoint for category recommendations
-@app.route('/api/recommend-categories', methods=['POST'])
+# ---------------------
+# Recommend categories
+# ---------------------
+@app.route('/api/recommend-categories', methods=['POST', 'OPTIONS'])
 def recommend_categories():
+    if request.method == 'OPTIONS':
+        return '', 200
     try:
         data = request.get_json()
-        day = data.get('day')  # e.g., 'Mon'
-        session = data.get('session')  # e.g., 'Lunch' or 'Dinner' from frontend
-        weather = data.get('weather')  # e.g., 'Rain'
-        waiter = data.get('waiter')  # e.g., new names like 'ornella (Mgt)'
+        day = data.get('day')
+        session = data.get('session')
+        weather = data.get('weather')
+        waiter = data.get('waiter')
 
-        # Map frontend session to data session
         if session == 'Lunch':
             session = 'Before5pm'
         elif session == 'Dinner':
             session = 'After5pm'
 
-        # Validate inputs
         if not all([day, session, weather, waiter]):
             return jsonify({'error': 'Missing or invalid input'}), 400
 
-        # Create input DataFrame matching training features
         input_df = pd.DataFrame({
             'Weekday': [day],
             'Session': [session],
@@ -95,22 +121,15 @@ def recommend_categories():
             'Clerk Name': [waiter]
         })
 
-        # Transform with encoder
         X_input = enc.transform(input_df)
-
-        # Predict quantities per category
         preds = model.predict(X_input)[0]
 
-        # Map predictions to categories
         cat_preds = {cat: preds[i] for i, cat in enumerate(categories)}
-
-        # Sort by predicted quantity descending and take top 3
         sorted_cats = sorted(cat_preds.items(), key=lambda x: x[1], reverse=True)[:3]
 
-        # Prepare recommendations with +20% target
         recommendations = []
         for cat, pred_qty in sorted_cats:
-            target_qty = int(round(pred_qty * 1.2))  # Round to nearest integer
+            target_qty = int(round(pred_qty * 1.2))
             recommendations.append({
                 'category': cat,
                 'predicted_quantity': round(pred_qty, 2),
@@ -122,5 +141,8 @@ def recommend_categories():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# ---------------------
+# Main
+# ---------------------
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
