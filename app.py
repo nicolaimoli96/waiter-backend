@@ -44,7 +44,7 @@ def login():
     password = data.get('password')
 
     # Admin-only login
-    if username == "admin" and password == "admin":
+    if username == "admin123" and password == "admin123":
         return jsonify({"success": True})
     else:
         return jsonify({"success": False}), 401
